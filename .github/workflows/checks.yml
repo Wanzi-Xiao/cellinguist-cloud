@@ -1,0 +1,30 @@
+name: Platform checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test API contract with in-memory objects only
+        working-directory: backend
+        run: python -m unittest discover -s tests -v
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.8'
+      - run: terraform fmt -check -recursive
+        working-directory: infra
+      - run: terraform init -backend=false
+        working-directory: infra
+      - run: terraform validate
+        working-directory: infra

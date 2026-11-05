@@ -1,0 +1,28 @@
+name: Build API image
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  image:
+    if: ${{ vars.AWS_ROLE_ARN != '' && vars.ECR_REPOSITORY != '' && vars.AWS_REGION != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push commit-tagged Lambda image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          tags: ${{ vars.ECR_REPOSITORY }}:${{ github.sha }}

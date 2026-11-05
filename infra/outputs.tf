@@ -1,0 +1,9 @@
+output "frontend_url" { value = "https://${aws_cloudfront_distribution.frontend.domain_name}" }
+output "api_url" { value = aws_apigatewayv2_api.api.api_endpoint }
+output "ecr_repository_url" { value = aws_ecr_repository.api.repository_url }
+output "github_role_arn" { value = aws_iam_role.github.arn }
+output "results_bucket" { value = aws_s3_bucket.results.id }
+output "frontend_bucket" { value = aws_s3_bucket.frontend.id }
+output "cognito_client_id" { value = aws_cognito_user_pool_client.web.id }
+output "cognito_domain" { value = "https://${aws_cognito_user_pool_domain.users.domain}.auth.${var.region}.amazoncognito.com" }
+output "operations_topic_arn" { value = aws_sns_topic.operations.arn }

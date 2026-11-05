@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+!.env.example
+.terraform/
+*.tfstate*
+*.tfvars
+!terraform.tfvars.example
+*.tfplan
+crash.log
+.aws/
+data/
+results/
+*.h5ad
+*.h5
+*.pt
+*.pth
+*.ckpt
+*.parquet
+*.csv
+*.tsv
+
+# Course documents stay local and must not be published.
+/docs/

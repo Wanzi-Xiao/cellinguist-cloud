@@ -1,0 +1,9 @@
+region = "us-east-1"
+environment = "dev"
+github_repository = "Wanzi-Xiao/cellinguist-cloud"
+notification_email = ""
+# Leave empty for bootstrap; set to ECR URI@sha256:digest after image build.
+api_image_uri = ""
+enable_schedule = false
+# Set only if the account already contains the GitHub OIDC provider.
+github_oidc_provider_arn = ""
