@@ -8,14 +8,18 @@ permissions:
   id-token: write
 jobs:
   image:
-    if: ${{ vars.AWS_ROLE_ARN != '' && vars.ECR_REPOSITORY != '' && vars.AWS_REGION != '' }}
+    if: github.repository == 'Wanzi-Xiao/cellinguist-cloud'
+    env:
+      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN || 'arn:aws:iam::056520430837:role/cellinguist-dev-github-ecr' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || '056520430837.dkr.ecr.us-east-1.amazonaws.com/cellinguist-dev-api' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
       - uses: docker/setup-buildx-action@v3
       - name: Build and push commit-tagged Lambda image
@@ -25,4 +29,6 @@ jobs:
           platforms: linux/amd64
           provenance: false
           push: true
-          tags: ${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+          tags: ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+      - name: Record immutable image reference
+        run: echo "Image tag — ${{ env.ECR_REPOSITORY }}:${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
