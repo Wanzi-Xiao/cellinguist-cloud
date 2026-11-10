@@ -58,6 +58,8 @@ resource "aws_iam_role_policy" "api" {
   role = aws_iam_role.api.id
   policy = jsonencode({ Version = "2012-10-17", Statement = [
     { Effect = "Allow", Action = ["s3:GetObject"], Resource = "${aws_s3_bucket.results.arn}/results/v1/*" },
+    # S3 requires ListBucket to distinguish a missing curated key (404) from access denial (403).
+    { Effect = "Allow", Action = ["s3:ListBucket"], Resource = aws_s3_bucket.results.arn },
     { Effect = "Allow", Action = ["dynamodb:PutItem", "dynamodb:Query"], Resource = aws_dynamodb_table.history.arn },
     { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.api.arn}:*" }
   ] })
@@ -106,12 +108,13 @@ resource "aws_apigatewayv2_integration" "api" {
   payload_format_version = "2.0"
 }
 resource "aws_apigatewayv2_route" "api" {
-  for_each           = var.api_image_uri == "" ? toset([]) : toset(["GET /health", "GET /catalog", "GET /results", "GET /history", "POST /history"])
-  api_id             = aws_apigatewayv2_api.api.id
-  route_key          = each.value
-  target             = "integrations/${aws_apigatewayv2_integration.api[0].id}"
-  authorization_type = each.value == "GET /health" ? "NONE" : "JWT"
-  authorizer_id      = each.value == "GET /health" ? null : aws_apigatewayv2_authorizer.jwt.id
+  for_each             = var.api_image_uri == "" ? toset([]) : toset(["GET /health", "GET /catalog", "GET /results", "GET /history", "POST /history"])
+  api_id               = aws_apigatewayv2_api.api.id
+  route_key            = each.value
+  target               = "integrations/${aws_apigatewayv2_integration.api[0].id}"
+  authorization_type   = each.value == "GET /health" ? "NONE" : "JWT"
+  authorizer_id        = each.value == "GET /health" ? null : aws_apigatewayv2_authorizer.jwt.id
+  authorization_scopes = each.value == "GET /health" ? [] : ["openid"]
 }
 resource "aws_cloudwatch_log_group" "gateway" {
   name              = "/aws/apigateway/${local.name}"

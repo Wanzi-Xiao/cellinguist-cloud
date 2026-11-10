@@ -38,7 +38,7 @@ resource "aws_lambda_function" "digest" {
     TOPIC_ARN    = aws_sns_topic.operations.arn
     API_FUNCTION = "${local.name}-api"
   } }
-  depends_on = [aws_iam_role_policy.digest]
+  depends_on = [aws_iam_role_policy.digest, aws_ecr_repository_policy.lambda]
 }
 resource "aws_iam_role" "scheduler" {
   name = "${local.name}-scheduler"

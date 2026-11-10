@@ -1,5 +1,6 @@
 """Read-only curated results and user-scoped history. No inference dependencies."""
 import base64
+import binascii
 import json
 import logging
 import os
@@ -17,7 +18,8 @@ class InvalidSelection(ValueError):
 class Store:
     def __init__(self):
         import boto3
-        self.s3 = boto3.client("s3")
+        from botocore.config import Config
+        self.s3 = boto3.client("s3", config=Config(signature_version="s3v4"))
         self.table = boto3.resource("dynamodb").Table(os.environ["HISTORY_TABLE"])
         self.bucket = os.environ["RESULTS_BUCKET"]
 
@@ -31,7 +33,10 @@ class Store:
             raise
         if len(body) > 262144:
             raise RuntimeError("Curated object exceeds size limit")
-        return json.loads(body)
+        try:
+            return json.loads(body)
+        except (ValueError, UnicodeError) as exc:
+            raise RuntimeError("Invalid curated JSON object") from exc
 
     def catalog(self):
         return self.read_json("results/v1/catalog.json") or {"version": "v1", "entries": []}
@@ -97,11 +102,16 @@ def handler(event, context, store=None):
             return response(200, result) if result else response(404, {"error": "Result not found"})
         if (method, path) == ("POST", "/history"):
             raw = event.get("body") or ""
-            if len(raw) > 8192:
+            if not isinstance(raw, str):
+                raise InvalidSelection("Expected JSON body")
+            if len(raw.encode("utf-8")) > 8192:
                 return response(413, {"error": "Request too large"})
-            if event.get("isBase64Encoded"):
-                raw = base64.b64decode(raw, validate=True).decode("utf-8")
-            body = json.loads(raw)
+            try:
+                if event.get("isBase64Encoded"):
+                    raw = base64.b64decode(raw, validate=True).decode("utf-8")
+                body = json.loads(raw)
+            except (ValueError, UnicodeError, binascii.Error) as exc:
+                raise InvalidSelection("Expected valid JSON body") from exc
             if not isinstance(body, dict) or set(body) != {"cellType", "conditionId"}:
                 raise InvalidSelection("Expected only cellType and conditionId")
             cell, condition = body["cellType"], body["conditionId"]
@@ -110,7 +120,7 @@ def handler(event, context, store=None):
         if (method, path) == ("GET", "/history"):
             return response(200, {"items": store.history(sub), "limit": 50})
         return response(404, {"error": "Route not found"})
-    except (ValueError, UnicodeError):
+    except InvalidSelection:
         return response(400, {"error": "Invalid request or unsupported selection"})
     except Exception:
         log.exception("API request failed")

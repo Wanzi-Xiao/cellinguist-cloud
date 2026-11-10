@@ -1,4 +1,5 @@
 import json
+import base64
 import unittest
 from app import handler
 
@@ -46,6 +47,27 @@ class ApiTests(unittest.TestCase):
     def test_reject_spoofed_identity_and_bad_json(self):
         for body in ('{"userId":"bob"}', '[]', 'broken'):
             self.assertEqual(self.call(event("/history", "POST", body=body))["statusCode"], 400)
+    def test_missing_allowlisted_result_returns_404(self):
+        class Missing(FakeStore):
+            def result(self, cell, condition):
+                return None
+        result = handler(event("/results", queryStringParameters={"cell_type": "demo-cell", "condition": "demo-condition"}), None, Missing())
+        self.assertEqual(result["statusCode"], 404)
+    def test_body_limit_is_in_bytes(self):
+        result = self.call(event("/history", "POST", body="界" * 3000))
+        self.assertEqual(result["statusCode"], 413)
+    def test_encoded_body_and_invalid_encoding(self):
+        raw = json.dumps({"cellType": "demo-cell", "conditionId": "demo-condition"})
+        encoded = base64.b64encode(raw.encode()).decode()
+        self.assertEqual(self.call(event("/history", "POST", body=encoded, isBase64Encoded=True))["statusCode"], 201)
+        self.assertEqual(self.call(event("/history", "POST", body="!!!", isBase64Encoded=True))["statusCode"], 400)
+    def test_storage_value_error_is_server_failure_not_client_error(self):
+        class Broken(FakeStore):
+            def catalog(self):
+                raise ValueError("invalid stored JSON")
+        with self.assertLogs("app", level="ERROR"):
+            result = handler(event("/catalog"), None, Broken())
+        self.assertEqual(result["statusCode"], 500)
     def test_internal_error_is_sanitized(self):
         class Broken(FakeStore):
             def catalog(self):

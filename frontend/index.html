@@ -1,7 +1,48 @@
 <!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Cellinguist Cloud</title>
-<style>body{font:18px system-ui;max-width:760px;margin:12vh auto;padding:24px;color:#193640;background:#f3f8f7}small{color:#536c70}</style>
-<h1>Cellinguist Cloud</h1><p>Precomputed cytokine response explorer</p>
-<p>The backend and cloud infrastructure are being prepared. No research data or model inference is connected.</p>
-<small>Course project · Platform scaffold · Catalog intentionally empty</small></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore approved, precomputed cytokine-response results and keep a personal query history.">
+  <meta name="referrer" content="no-referrer">
+  <title>Cellinguist Cloud · Response explorer</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script type="module" src="app.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to workspace</a>
+  <aside class="sidebar">
+    <a class="brand" href="./" aria-label="Cellinguist Cloud home"><span class="brand-icon" aria-hidden="true">c<span>·</span></span><span>Cellinguist<small>CLOUD WORKSPACE</small></span></a>
+    <p class="nav-caption">RESEARCH WORKSPACE</p>
+    <nav aria-label="Workspace"><button id="explorer-tab" class="nav-item active" aria-current="page"><span aria-hidden="true">◈</span> Response explorer</button><button id="history-tab" class="nav-item"><span aria-hidden="true">◷</span> Saved queries <span id="history-count" class="count">—</span></button></nav>
+    <section class="side-note"><span class="eyebrow">CURATED RESULTS</span><p>Explore responses.<br>Keep the context.</p><small>This workspace displays precomputed outputs from an approved catalog.</small></section>
+    <div class="side-footer"><span class="status-dot"></span> Precomputed results only<small>Cellinguist Cloud · Course project</small></div>
+  </aside>
+  <div class="shell">
+    <header class="topbar"><span>Workspace <span class="separator">/</span> <strong id="breadcrumb">Response explorer</strong></span><div class="account"><span id="session-label">Signed out</span><button id="auth-button" class="button secondary" disabled>Sign in / Sign up</button></div></header>
+    <main id="workspace">
+      <div class="page-heading"><div><p class="eyebrow">CELLULAR RESPONSE AT A GLANCE</p><h1 id="page-title">Response explorer<span>.</span></h1><p id="page-description" class="muted">Find a cell type. Choose a treatment. Explore its curated response.</p></div><span id="connection-status" class="pill">Not connected</span></div>
+      <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
+      <div id="error" role="alert" class="notice error" hidden></div>
+      <section id="explorer-panel" aria-labelledby="selection-heading">
+        <div class="stats-grid"><div class="stat"><span>Catalog entries</span><strong id="catalog-count">—</strong><small>Approved cell–treatment pairs</small></div><div class="stat"><span>Result source</span><strong class="stat-text">Precomputed</strong><small>No live model inference</small></div><div class="stat"><span>Your workspace</span><strong id="workspace-state" class="stat-text">Signed out</strong><small id="workspace-caption">Sign in to explore and save</small></div></div>
+        <div class="explorer-grid">
+          <section class="card selection-card"><div class="card-heading"><span class="step">01</span><h2 id="selection-heading">Build your query</h2></div><p class="muted compact">Choose from the approved result catalog.</p>
+            <form id="query-form"><label for="cell-type">Cell type</label><select id="cell-type" disabled><option value="">Sign in to load catalog</option></select><label for="condition">Cytokine treatment</label><select id="condition" disabled><option value="">Choose a cell type first</option></select><p class="field-hint">Only supported treatments and combinations appear here.</p><button id="view-button" type="submit" class="button primary full" disabled>Explore response <span aria-hidden="true">↗</span></button></form>
+            <div class="selection-foot"><span aria-hidden="true">▣</span><p>Curated, read-only results.<br><span class="muted">Your query does not run a model.</span></p></div>
+          </section>
+          <section class="card result-card" aria-labelledby="result-heading"><div class="card-toolbar"><div class="card-heading"><span class="step">02</span><h2 id="result-heading">Response overview</h2></div><span class="pill subtle">PRECOMPUTED</span></div>
+            <div id="result-empty" class="empty-state"><div class="cell-illustration" aria-hidden="true"><span></span><i></i><b></b></div><h3 id="empty-title">Your next insight starts here</h3><p id="empty-description">Sign in, then choose a cell type and treatment to view an existing response.</p><span class="empty-caption">SELECT · EXPLORE · SAVE</span></div>
+            <div id="result-content" hidden><div class="result-title"><div><p class="eyebrow" id="result-condition"></p><h3 id="result-cell"></h3></div><button id="save-button" class="button primary" disabled>Save query</button></div><p class="muted compact" id="result-version"></p><div class="plot-frame"><img id="result-plot" alt="Curated precomputed response plot" referrerpolicy="no-referrer"><p id="plot-error" class="muted" hidden>Plot unavailable or its link has expired. Explore this response again to request a fresh link.</p></div><h4>Response summary</h4><pre id="result-summary" tabindex="0"></pre></div>
+          </section>
+        </div>
+        <div class="workspace-note"><span aria-hidden="true">ⓘ</span><p>Results are retrieved from a curated catalog. Saved queries belong to your account and are available when you sign in again.</p></div>
+      </section>
+      <section id="history-panel" class="card history-card" aria-labelledby="history-heading" hidden><div class="card-toolbar"><div><p class="eyebrow">YOUR RESEARCH TRAIL</p><h2 id="history-heading">Saved queries</h2></div><button id="refresh-history" class="button secondary" disabled>Refresh</button></div><p class="muted compact">Your 50 most recent queries, newest first. Open a query to revisit its current catalog result.</p><div id="history-empty" class="history-empty">Sign in to see your saved queries.</div><ul id="history-list" class="history-list"></ul></section>
+      <footer class="main-footer"><span>Cellinguist Cloud</span><span>Approved outputs. Personal exploration.</span></footer>
+    </main>
+  </div>
+  <noscript><p class="notice error">Enable JavaScript to use the response explorer.</p></noscript>
+</body>
+</html>

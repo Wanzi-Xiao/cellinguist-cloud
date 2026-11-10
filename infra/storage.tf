@@ -58,12 +58,13 @@ resource "aws_cloudfront_distribution" "frontend" {
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
   default_cache_behavior {
-    target_origin_id       = "frontend"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    cache_policy_id        = "658327ea-f89d-4fab-a63d-7e88639e58f6"
-    compress               = true
+    target_origin_id           = "frontend"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    cache_policy_id            = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    compress                   = true
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.frontend.id
   }
   restrictions {
     geo_restriction { restriction_type = "none" }
@@ -79,10 +80,63 @@ resource "aws_s3_bucket_policy" "frontend" {
   }] })
   depends_on = [aws_s3_bucket_public_access_block.frontend]
 }
+locals {
+  frontend_types = {
+    "index.html" = "text/html; charset=utf-8"
+    "styles.css" = "text/css; charset=utf-8"
+    "app.mjs"    = "text/javascript; charset=utf-8"
+    "auth.mjs"   = "text/javascript; charset=utf-8"
+    "api.mjs"    = "text/javascript; charset=utf-8"
+  }
+}
 resource "aws_s3_object" "frontend" {
-  bucket       = aws_s3_bucket.frontend.id
-  key          = "index.html"
-  source       = "${path.module}/../frontend/index.html"
-  etag         = filemd5("${path.module}/../frontend/index.html")
-  content_type = "text/html"
+  for_each      = local.frontend_types
+  bucket        = aws_s3_bucket.frontend.id
+  key           = each.key
+  source        = "${path.module}/../frontend/${each.key}"
+  etag          = filemd5("${path.module}/../frontend/${each.key}")
+  content_type  = each.value
+  cache_control = "no-cache"
+}
+resource "aws_s3_object" "config" {
+  bucket = aws_s3_bucket.frontend.id
+  key    = "config.js"
+  content = "window.CELLINGUIST_CONFIG = Object.freeze(${jsonencode({
+    apiUrl        = aws_apigatewayv2_api.api.api_endpoint
+    cognitoDomain = "https://${aws_cognito_user_pool_domain.users.domain}.auth.${var.region}.amazoncognito.com"
+    clientId      = aws_cognito_user_pool_client.web.id
+    redirectUri   = "https://${aws_cloudfront_distribution.frontend.domain_name}/"
+  })});"
+  content_type  = "text/javascript; charset=utf-8"
+  cache_control = "no-store"
+}
+resource "aws_s3_object" "empty_catalog" {
+  bucket       = aws_s3_bucket.results.id
+  key          = "results/v1/catalog.json"
+  content      = jsonencode({ version = "v1", entries = [] })
+  content_type = "application/json"
+  # This is bootstrap configuration. Later curated uploads are owned outside Terraform.
+  lifecycle { ignore_changes = [content] }
+}
+resource "aws_cloudfront_response_headers_policy" "frontend" {
+  name = "${local.name}-browser-security"
+  security_headers_config {
+    content_type_options { override = true }
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+    referrer_policy {
+      referrer_policy = "no-referrer"
+      override        = true
+    }
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      override                   = true
+    }
+    content_security_policy {
+      content_security_policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://${aws_s3_bucket.results.id}.s3.amazonaws.com https://${aws_s3_bucket.results.id}.s3.${var.region}.amazonaws.com; connect-src 'self' https://*.execute-api.${var.region}.amazonaws.com https://${aws_cognito_user_pool_domain.users.domain}.auth.${var.region}.amazoncognito.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+      override                = true
+    }
+  }
 }

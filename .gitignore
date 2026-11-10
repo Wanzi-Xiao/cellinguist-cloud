@@ -24,3 +24,8 @@ results/
 
 # Course documents stay local and must not be published.
 /docs/
+
+node_modules/
+.tools/
+playwright-report/
+test-results/

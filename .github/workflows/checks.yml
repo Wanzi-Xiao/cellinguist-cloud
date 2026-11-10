@@ -15,6 +15,19 @@ jobs:
       - name: Test API contract with in-memory objects only
         working-directory: backend
         run: python -m unittest discover -s tests -v
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test PKCE login and authenticated API client
+        run: node --test frontend/tests/*.test.mjs
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Check desktop/mobile and complete UI flow with intercepted requests
+        run: npm run test:browser
   terraform:
     runs-on: ubuntu-latest
     steps:
