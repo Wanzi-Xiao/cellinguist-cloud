@@ -4,7 +4,16 @@ A cloud computing final project for exploring **approved, precomputed** cytokine
 
 ## Implementation status
 
-The interactive dashboard and AWS deployment configuration are implemented. **AWS deployment and real-service integration checks are still pending account authentication.** The catalog intentionally starts empty; there are no research results to browse until separately approved artifacts are supplied.
+The platform is deployed on AWS as of 2026-11-10. The catalog intentionally starts empty; there are no research results to browse until separately approved artifacts are supplied.
+
+- Dashboard: https://d3t5bcsvv8n26w.cloudfront.net
+- Public API health: https://eg3kg9bak8.execute-api.us-east-1.amazonaws.com/health
+- Successful OIDC image build: https://github.com/Wanzi-Xiao/cellinguist-cloud/actions/runs/42868636908 (attempt 2)
+- Successful platform checks: https://github.com/Wanzi-Xiao/cellinguist-cloud/actions/runs/42868636860
+- Deployed image source commit: `8f77b8939bbc1adc630753eccd8b7c391dd272e7`
+- Deployed ECR image digest: `sha256:c5ecb0ec81bb3e7816e847865cf51c0e530d632b1a12ebef3c828c110c598614`
+
+SNS email subscription confirmation and the final course demo remain user actions. The weekly digest schedule stays disabled until deliberately enabled.
 
 - Responsive response explorer: sign-in/signup, cell/treatment selection, precomputed plot and JSON summary, saved queries, and reopening historical selections.
 - Cognito authorization-code flow with S256 PKCE, random single-use state, a ten-minute callback lifetime, and tab-scoped access tokens. ID/refresh tokens are discarded. Expired sessions require sign-in again; a new sign-in retrieves the same DynamoDB history.
@@ -14,7 +23,7 @@ The interactive dashboard and AWS deployment configuration are implemented. **AW
 - Container-based Python Lambda API and separate operational digest handler. No inference dependencies.
 - Terraform defines S3, CloudFront, API Gateway HTTP API, Lambda, ECR, DynamoDB, Cognito, EventBridge Scheduler, SNS, and a CloudWatch dashboard/alarm. IAM is additional to these ten services.
 - Terraform uploads all browser assets and generates public `config.js` from resource outputs. Private S3 origins, browser security headers, and disabled CloudFront caching support OAuth callbacks and configuration updates.
-- GitHub Actions runs API/frontend/browser checks and Terraform validation. A separate workflow builds commit-tagged ECR images with GitHub OIDC after repository variables are configured. Deployment is a manual reviewed Terraform update.
+- GitHub Actions runs API/frontend/browser checks and Terraform validation. Browser CI is pinned to Ubuntu 22.04 to match the locked Playwright version. A separate workflow builds commit-tagged ECR images with GitHub OIDC using public deployment identifiers in the workflow, with optional repository-variable overrides. Deployment is a manual reviewed Terraform update.
 
 ## Layout
 
@@ -55,6 +64,21 @@ python3 -m http.server 8080 --bind 127.0.0.1 --directory frontend
 
 Use SSH port forwarding if viewing a remote server. This serves only the frontend directory. The checked-in `config.js` has empty values: login and result actions stay disabled until connected. It does not simulate an authenticated session or supply fake catalog results.
 
+## Live AWS verification
+
+The deployed platform passed public-health and unauthenticated-rejection checks, CloudFront header checks, two real Cognito authorization-code/PKCE logins, authenticated empty-catalog behavior, user partition isolation, history after reload, and hosted logout. Test-user email was suppressed. Both temporary users and a temporary history probe were removed afterward.
+
+To repeat deliberately on the configured Linux development server (requires project AWS credentials, system Python with `memfd_create`, and installed Playwright/Chromium):
+
+```bash
+source scripts/aws_env.sh
+CELLINGUIST_LIVE_CHECK=1 npm run test:aws
+```
+
+This live check creates two temporary Cognito users and one temporary DynamoDB history probe. It never adds result artifacts or runs a model. Passwords stay in anonymous memory, never CLI arguments or disk; `.tools/live-smoke-cleanup.json` records only resource IDs for recovery if interrupted. Logs/screenshots remain under ignored `docs/` when redirected there.
+
+Because the approved catalog is empty, successful `POST /history` and private plot-link delivery still require a separately approved catalog entry for a full data-enabled demo. The live isolation check uses a direct, temporary DynamoDB probe rather than pretending an unsupported selection can be saved. Local browser tests cover the complete selection/save flow using intercepted contract-test responses.
+
 ## Personal AWS account setup
 
 The development server has project-local AWS CLI v2 and Terraform in ignored `.tools/bin/`. These binaries are not shipped through Git. A new checkout needs AWS CLI v2 and Terraform installed separately (place/link the CLI at `.tools/bin/aws` to use the helper).
@@ -78,7 +102,7 @@ AWS browser login requires a suitable IAM identity and `SignInLocalDevelopmentAc
 
 No step below runs automatically. AWS resources incur charges while deployed. State is local, ignored, and must be retained securely until teardown.
 
-1. Authenticate and verify the intended account as above. Copy `infra/terraform.tfvars.example` to ignored `infra/terraform.tfvars`; review region/environment and set the administrator notification email if desired. Keep `api_image_uri = ""` and `enable_schedule = false` initially. If the account already has a GitHub OIDC provider, set `github_oidc_provider_arn` to reuse it.
+1. Authenticate and verify the intended account as above. Copy `infra/terraform.tfvars.example` to ignored `infra/terraform.tfvars`; review region/environment and set the administrator notification email if desired. Keep `api_image_uri = ""` and `enable_schedule = false` initially. If the account already has a GitHub OIDC provider, set `github_oidc_provider_arn` to reuse it. Set `github_oidc_subject` to the exact subject issued for this repository/main branch; new GitHub repositories include immutable owner/repository IDs. The example is configured for this repository. See [GitHub immutable-subject documentation](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/).
 2. Review and apply bootstrap infrastructure:
 
    ```bash
@@ -92,7 +116,7 @@ No step below runs automatically. AWS resources incur charges while deployed. St
    ```
 
    Bootstrap creates the dashboard, Cognito, ECR, storage, monitoring, and supporting services. The private catalog is initialized as `{"version":"v1","entries":[]}`. Both image-based Lambdas, their API routes, and the schedule are omitted until an image exists, so the dashboard cannot reach working API routes yet.
-3. In GitHub repository **Settings → Secrets and variables → Actions → Variables**, set `AWS_REGION`, `AWS_ROLE_ARN` from Terraform `github_role_arn`, and `ECR_REPOSITORY` from `ecr_repository_url`. These are configuration values, not AWS access keys. Dispatch **Build API image** from `main`, or push a new commit to `main`. The workflow skips until the variables exist. ECR tags are immutable: rebuild with a new commit SHA when needed.
+3. The workflow includes the current deployment's public region, scoped role ARN, and ECR repository URI; these are identifiers, not credentials. Optional GitHub Actions variables `AWS_REGION`, `AWS_ROLE_ARN`, and `ECR_REPOSITORY` override them for another deployment. Dispatch **Build API image** from `main`, or push a new commit to `main`. Forks do not use this deployment job. ECR tags are immutable: rebuild with a new commit SHA when needed. The OIDC trust policy must exactly match the main-branch subject; it grants image delivery only, not infrastructure administration.
 4. Record the successful Actions run URL and exact ECR image digest. Set `api_image_uri` in private tfvars to `repository@sha256:...`, then review a new plan and apply it. Both Lambdas use that image with different handler commands. Terraform generates `config.js` and uploads all browser assets; no manual copying of API URLs is needed. The public frontend bucket remains private behind CloudFront origin access control.
 5. Verify `/health`, unauthenticated rejection, Cognito signup/sign-in/logout, access-token authorization, empty catalog behavior, and history isolation with two real accounts. The local tests and mocked browser checks do not replace AWS integration testing.
 6. Confirm the SNS email subscription. Test the digest and alarm, inspect the CloudWatch dashboard, and only enable the weekly schedule when desired. The digest reads aggregate metrics, never personal query histories. It defaults to disabled.
@@ -113,16 +137,18 @@ Catalog: `{"version":"v1","entries":[{"cellType":"approved-slug","conditionId":"
 
 The gateway uses HTTP API payload format 2.0, rather than the separate API Gateway REST API product. API Gateway validates token signature, issuer, audience and scope; Lambda reads its verified `sub`. Do not expose a public Lambda Function URL. See [AWS JWT-authorizer guidance](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html). CloudFront uses the documented [CachingDisabled policy](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html#managed-cache-policy-caching-disabled); CSP restricts connections to the configured Cognito origin and regional API Gateway endpoints (the regional pattern avoids a Terraform dependency cycle).
 
-## Course evidence still needed
+## Course evidence
 
-- Real AWS plan/apply and integration checks with two user accounts.
-- Successful GitHub OIDC ECR build and recorded deployed digest.
+Completed: real Terraform bootstrap/application apply, GitHub OIDC ECR push, digest-pinned Lambda deployment, real Cognito/browser/history-isolation checks with two temporary users (removed afterward), successful operational-digest publication to SNS, and a successful CloudWatch alarm action to SNS. A final Terraform plan reports no configuration drift. Detailed plans, logs, and state stay local and ignored.
+
+Still needed:
+
 - Approved demonstration artifacts, if/when authorized separately.
-- SNS subscription/digest, configured alarm, and CloudWatch dashboard demonstration.
+- Confirm the SNS email subscription, verify delivery, and record the digest/alarm/dashboard demonstration. The weekly schedule intentionally remains disabled.
 - Recorded demo, exact deployed URLs, and cleanup evidence.
 
 ## Validation and AI assistance
 
-On 2026-11-10: 11 backend tests, 12 frontend unit tests, desktop/mobile browser flow checks using intercepted requests, and Terraform validation/format checks passed. Browser testing found and fixed a Window.fetch binding issue that Node unit tests alone did not expose. No AWS apply, real-account integration test, data processing, inference, or production container build has been performed.
+On 2026-11-10: 11 backend tests, 12 frontend unit tests, desktop/mobile browser flow checks using intercepted requests, and Terraform validation/format checks passed. Browser testing found and fixed a Window.fetch binding issue that Node unit tests alone did not expose. The AWS platform has since been deployed through Terraform and the production image built through GitHub OIDC. Research data processing and inference have not been performed.
 
 ChatGPT/Codex assisted with the backend, dashboard, Terraform, workflows, tests, and documentation. The student must review design decisions, complete AWS integration validation, and disclose AI assistance in the final submission. The local proposal is a design reference, not authorization to execute research or publish its contents.

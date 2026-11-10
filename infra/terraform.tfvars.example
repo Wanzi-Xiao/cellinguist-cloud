@@ -7,3 +7,7 @@ api_image_uri = ""
 enable_schedule = false
 # Set only if the account already contains the GitHub OIDC provider.
 github_oidc_provider_arn = ""
+
+# If GitHub uses an immutable-ID subject, set the exact OIDC sub for this repo/main branch.
+# Inspect a failed STS CloudTrail event's WebIdentityUser userName; never copy tokens into Git.
+github_oidc_subject = "repo:Wanzi-Xiao@71678825/cellinguist-cloud@1440413446:ref:refs/heads/main"

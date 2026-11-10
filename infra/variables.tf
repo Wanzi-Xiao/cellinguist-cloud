@@ -32,3 +32,13 @@ variable "github_oidc_provider_arn" {
   default     = ""
   description = "Reuse an existing GitHub OIDC provider if this account already has one."
 }
+
+variable "github_oidc_subject" {
+  type        = string
+  default     = ""
+  description = "Exact GitHub main-branch OIDC subject, including immutable owner/repository IDs when enabled. Empty uses the legacy repository-name subject."
+  validation {
+    condition     = var.github_oidc_subject == "" || (startswith(var.github_oidc_subject, "repo:") && endswith(var.github_oidc_subject, ":ref:refs/heads/main") && length(regexall("[*?]", var.github_oidc_subject)) == 0)
+    error_message = "Use an exact repository main-branch subject without wildcard characters."
+  }
+}

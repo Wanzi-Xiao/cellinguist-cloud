@@ -5,7 +5,8 @@
   "description": "Development-only verification; the deployed dashboard is buildless HTML and ES modules.",
   "scripts": {
     "test": "node --test frontend/tests/*.test.mjs",
-    "test:browser": "node scripts/browser_check.mjs"
+    "test:browser": "node scripts/browser_check.mjs",
+    "test:aws": "node scripts/aws_smoke.mjs"
   },
   "devDependencies": {
     "playwright": "1.56.1"
