@@ -7,6 +7,7 @@ import os
 import re
 from datetime import datetime, timezone
 from uuid import uuid4
+from object_json import read_json_object
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -26,17 +27,12 @@ class Store:
     def read_json(self, key):
         from botocore.exceptions import ClientError
         try:
-            body = self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read(262145)
+            obj = self.s3.get_object(Bucket=self.bucket, Key=key)
         except ClientError as exc:
             if exc.response["Error"]["Code"] in ("NoSuchKey", "404"):
                 return None
             raise
-        if len(body) > 262144:
-            raise RuntimeError("Curated object exceeds size limit")
-        try:
-            return json.loads(body)
-        except (ValueError, UnicodeError) as exc:
-            raise RuntimeError("Invalid curated JSON object") from exc
+        return read_json_object(obj["Body"], obj.get("ContentEncoding"))
 
     def catalog(self):
         return self.read_json("results/v1/catalog.json") or {"version": "v1", "entries": []}
