@@ -113,10 +113,10 @@ resource "aws_s3_object" "config" {
 resource "aws_s3_object" "empty_catalog" {
   bucket       = aws_s3_bucket.results.id
   key          = "results/v1/catalog.json"
-  content      = jsonencode({ version = "v1", entries = [] })
+  content      = var.enable_synthetic_demo ? file("${path.module}/../demo/synthetic-v1/catalog.json") : jsonencode({ version = "v1", entries = [] })
   content_type = "application/json"
-  # This is bootstrap configuration. Later curated uploads are owned outside Terraform.
-  lifecycle { ignore_changes = [content] }
+  # Keep the original state address; Terraform now owns the demo/empty catalog.
+  depends_on = [aws_s3_object.synthetic_demo]
 }
 resource "aws_cloudfront_response_headers_policy" "frontend" {
   name = "${local.name}-browser-security"
@@ -139,4 +139,14 @@ resource "aws_cloudfront_response_headers_policy" "frontend" {
       override                = true
     }
   }
+}
+
+resource "aws_s3_object" "synthetic_demo" {
+  for_each     = var.enable_synthetic_demo ? fileset("${path.module}/../demo/synthetic-v1", "demo-*/**") : toset([])
+  bucket       = aws_s3_bucket.results.id
+  key          = "results/v1/${each.value}"
+  source       = "${path.module}/../demo/synthetic-v1/${each.value}"
+  etag         = filemd5("${path.module}/../demo/synthetic-v1/${each.value}")
+  content_type = endswith(each.value, ".png") ? "image/png" : "application/json"
+  metadata     = { synthetic = "true", purpose = "class-demo-not-scientific-predictions" }
 }

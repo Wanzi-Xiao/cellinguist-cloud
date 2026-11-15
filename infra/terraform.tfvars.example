@@ -11,3 +11,6 @@ github_oidc_provider_arn = ""
 # If GitHub uses an immutable-ID subject, set the exact OIDC sub for this repo/main branch.
 # Inspect a failed STS CloudTrail event's WebIdentityUser userName; never copy tokens into Git.
 github_oidc_subject = "repo:Wanzi-Xiao@71678825/cellinguist-cloud@1440413446:ref:refs/heads/main"
+
+# Optional, explicitly labeled fixtures for the class presentation.
+enable_synthetic_demo = false

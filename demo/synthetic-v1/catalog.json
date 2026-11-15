@@ -1,0 +1,22 @@
+{
+  "version": "v1",
+  "synthetic": true,
+  "disclaimer": "SYNTHETIC CLASS DEMO. Hand-authored arbitrary values; not model predictions or biological findings.",
+  "entries": [
+    {
+      "cellType": "demo-cell-alpha",
+      "conditionId": "demo-treatment-one",
+      "synthetic": true
+    },
+    {
+      "cellType": "demo-cell-alpha",
+      "conditionId": "demo-combination-one-two",
+      "synthetic": true
+    },
+    {
+      "cellType": "demo-cell-beta",
+      "conditionId": "demo-treatment-two",
+      "synthetic": true
+    }
+  ]
+}

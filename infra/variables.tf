@@ -42,3 +42,9 @@ variable "github_oidc_subject" {
     error_message = "Use an exact repository main-branch subject without wildcard characters."
   }
 }
+
+variable "enable_synthetic_demo" {
+  type        = bool
+  default     = false
+  description = "Publish the explicitly labeled, hand-authored class demo catalog and artifacts. No model/data processing."
+}

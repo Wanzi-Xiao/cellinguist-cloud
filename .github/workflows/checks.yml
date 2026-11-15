@@ -15,6 +15,8 @@ jobs:
       - name: Test API contract with in-memory objects only
         working-directory: backend
         run: python -m unittest discover -s tests -v
+      - name: Validate synthetic fixture labels and deployable artifact contract
+        run: python -m unittest discover -s scripts/tests -v
   frontend:
     runs-on: ubuntu-22.04
     steps:

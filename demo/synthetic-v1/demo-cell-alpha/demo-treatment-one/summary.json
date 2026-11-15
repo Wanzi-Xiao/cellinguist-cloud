@@ -1,0 +1,23 @@
+{
+  "synthetic": true,
+  "disclaimer": "SYNTHETIC CLASS DEMO. Hand-authored arbitrary values; not model predictions or biological findings.",
+  "source": "Hand-authored fixtures for cloud-platform demonstration only",
+  "fixtureVersion": "synthetic-v1",
+  "cellType": "demo-cell-alpha",
+  "conditionId": "demo-treatment-one",
+  "units": "Arbitrary illustrative score; no biological interpretation",
+  "features": [
+    {
+      "label": "Demo feature A",
+      "score": 0.25
+    },
+    {
+      "label": "Demo feature B",
+      "score": 0.6
+    },
+    {
+      "label": "Demo feature C",
+      "score": 0.35
+    }
+  ]
+}

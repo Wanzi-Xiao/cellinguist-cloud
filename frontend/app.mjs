@@ -13,6 +13,7 @@ function resetResult() {
   $('result-empty').hidden = false;
   $('result-plot').removeAttribute('src');
   $('result-summary').textContent = '';
+  $('result-badge').textContent = 'PRECOMPUTED';
   controls();
 }
 function controls() {
@@ -35,6 +36,7 @@ function conditions() {
 function resetAccount() {
   state.authenticated = false;
   state.entries = [];
+  $('synthetic-notice').hidden = true;
   $('session-label').textContent = 'Signed out';
   $('workspace-state').textContent = 'Signed out';
   $('workspace-caption').textContent = 'Sign in to explore and save';
@@ -83,7 +85,9 @@ async function loadResult(cell, condition) {
   state.result = {cell, condition};
   $('result-cell').textContent = readable(cell);
   $('result-condition').textContent = readable(condition);
-  $('result-version').textContent = `Precomputed result · ${result.resultVersion || 'version unavailable'} · Plot link expires in 5 minutes`;
+  const synthetic = result.summary.synthetic === true;
+  $('result-badge').textContent = synthetic ? 'SYNTHETIC DEMO' : 'PRECOMPUTED';
+  $('result-version').textContent = `${synthetic ? 'Synthetic teaching example · Not a scientific prediction' : 'Precomputed result'} · ${result.resultVersion || 'version unavailable'} · Plot link expires in 5 minutes`;
   $('result-summary').textContent = JSON.stringify(result.summary, null, 2);
   $('result-plot').hidden = false;
   $('plot-error').hidden = true;
@@ -124,6 +128,7 @@ async function loadWorkspace() {
   $('workspace-caption').textContent = 'Queries saved to your account';
   $('auth-button').textContent = 'Sign out';
   state.entries = catalogEntries(await api.catalog());
+  $('synthetic-notice').hidden = !state.entries.some(entry => entry.synthetic === true);
   $('catalog-count').textContent = String(state.entries.length);
   const cells = [...new Set(state.entries.map(entry => entry.cellType))];
   $('cell-type').replaceChildren(option('', cells.length ? 'Choose a cell type' : 'No approved results yet'), ...cells.map(cell => option(cell, readable(cell))));

@@ -4,7 +4,7 @@ A cloud computing final project for exploring **approved, precomputed** cytokine
 
 ## Implementation status
 
-The platform is deployed on AWS as of 2026-11-10. The catalog intentionally starts empty; there are no research results to browse until separately approved artifacts are supplied.
+The platform is deployed on AWS as of 2026-11-10. The default catalog starts empty. Three explicitly synthetic, user-approved teaching examples are available for optional deployment with `enable_synthetic_demo = true`; they are not scientific predictions. Real research artifacts remain excluded.
 
 - Dashboard: https://d3t5bcsvv8n26w.cloudfront.net
 - Public API health: https://eg3kg9bak8.execute-api.us-east-1.amazonaws.com/health
@@ -64,6 +64,16 @@ python3 -m http.server 8080 --bind 127.0.0.1 --directory frontend
 
 Use SSH port forwarding if viewing a remote server. This serves only the frontend directory. The checked-in `config.js` has empty values: login and result actions stay disabled until connected. It does not simulate an authenticated session or supply fake catalog results.
 
+## Synthetic class demo
+
+The user approved adding synthetic examples on 2026-11-15. `demo/synthetic-v1/` contains three tiny, hand-authored JSON/PNG pairs for two fictional cell types and three fictional treatments (including a combination). Scores are arbitrary illustrative values. The catalog, summary JSON, PNG metadata and image text all identify them as synthetic, and the dashboard shows a persistent warning plus a per-result badge. These assets are safe to publish as course fixtures and are unrelated to existing research directories.
+
+Reproduce the PNG/JSON fixtures with `python3 scripts/build_synthetic_demo.py` (development-only Matplotlib dependency; never installed in Lambda). Check their deployable contract with `python3 -m unittest discover -s scripts/tests -v`. Browser regression tests use these same files with intercepted requests, so screenshots do not pretend to be evidence of AWS deployment.
+
+`enable_synthetic_demo` defaults to false. Set it to true in ignored tfvars to publish the three examples via Terraform; turning it off clears the catalog and removes their current S3 objects. S3 version history remains until teardown. This intentionally replaces the previous bootstrap catalog's `ignore_changes` behavior: the catalog is now managed by Terraform. Do not overwrite non-demo result entries without a separate explicit decision.
+
+Suggested recording: sign in → choose **Demo Cell Alpha / Demo Treatment One** → show the synthetic label, plot and JSON → save → sign out → sign in again → open **Saved queries** → revisit the result. No training or inference is involved.
+
 ## Live AWS verification
 
 The deployed platform passed public-health and unauthenticated-rejection checks, CloudFront header checks, two real Cognito authorization-code/PKCE logins, authenticated empty-catalog behavior, user partition isolation, history after reload, and hosted logout. Test-user email was suppressed. Both temporary users and a temporary history probe were removed afterward.
@@ -77,7 +87,7 @@ CELLINGUIST_LIVE_CHECK=1 npm run test:aws
 
 This live check creates two temporary Cognito users and one temporary DynamoDB history probe. It never adds result artifacts or runs a model. Passwords stay in anonymous memory, never CLI arguments or disk; `.tools/live-smoke-cleanup.json` records only resource IDs for recovery if interrupted. Logs/screenshots remain under ignored `docs/` when redirected there.
 
-Because the approved catalog is empty, successful `POST /history` and private plot-link delivery still require a separately approved catalog entry for a full data-enabled demo. The live isolation check uses a direct, temporary DynamoDB probe rather than pretending an unsupported selection can be saved. Local browser tests cover the complete selection/save flow using intercepted contract-test responses.
+With the optional synthetic catalog enabled, the live check exercises the real private plot link, unsigned-plot rejection, UI Save query, cross-user isolation, reopening a saved query, and persistence after logout followed by a new Cognito login. With an empty catalog it instead uses a temporary direct-table history probe. Every saved test record in these freshly created test users' partitions is deleted before the users are removed. It never reads unrelated user partitions.
 
 ## Personal AWS account setup
 
@@ -120,7 +130,7 @@ No step below runs automatically. AWS resources incur charges while deployed. St
 4. Record the successful Actions run URL and exact ECR image digest. Set `api_image_uri` in private tfvars to `repository@sha256:...`, then review a new plan and apply it. Both Lambdas use that image with different handler commands. Terraform generates `config.js` and uploads all browser assets; no manual copying of API URLs is needed. The public frontend bucket remains private behind CloudFront origin access control.
 5. Verify `/health`, unauthenticated rejection, Cognito signup/sign-in/logout, access-token authorization, empty catalog behavior, and history isolation with two real accounts. The local tests and mocked browser checks do not replace AWS integration testing.
 6. Confirm the SNS email subscription. Test the digest and alarm, inspect the CloudWatch dashboard, and only enable the weekly schedule when desired. The digest reads aggregate metrics, never personal query histories. It defaults to disabled.
-7. Supply only separately approved curated artifacts. No seed upload, research-data processing, or model operation is part of this repository's setup. Terraform ignores later content changes to its bootstrap catalog so it does not reset approved uploads to empty on the next apply.
+7. To publish the approved synthetic class demo, set `enable_synthetic_demo = true`, review a new Terraform plan, and apply it. Terraform uploads six demo artifacts and manages the catalog, publishing the catalog only after its result objects exist. Do not manually replace the managed catalog: later applies restore the selected demo/empty catalog. Add any future approved research catalog through an explicit infrastructure change instead. No research-data processing or model operation is part of setup.
 8. Record the course demo and deployment evidence. For teardown, empty both S3 buckets (including versioned objects/delete markers) and delete ECR images before `terraform destroy`. Force deletion is intentionally disabled. Retain state until teardown is confirmed.
 
 ## Curated-result contract
@@ -143,7 +153,7 @@ Completed: real Terraform bootstrap/application apply, GitHub OIDC ECR push, dig
 
 Still needed:
 
-- Approved demonstration artifacts, if/when authorized separately.
+- Complete the optional synthetic-demo deployment and record its live verification after AWS login; real research artifacts are not needed for this teaching demo.
 - Confirm the SNS email subscription, verify delivery, and record the digest/alarm/dashboard demonstration. The weekly schedule intentionally remains disabled.
 - Recorded demo, exact deployed URLs, and cleanup evidence.
 

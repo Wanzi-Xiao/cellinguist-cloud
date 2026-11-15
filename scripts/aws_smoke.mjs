@@ -1,6 +1,6 @@
 // Explicit live integration check. Creates two temporary Cognito users and one
-// temporary DynamoDB history probe, then removes only those created resources.
-// No result artifacts, research data, email messages, or model operations.
+// saved demo queries (or an empty-catalog probe), then removes their records.
+// Only explicitly synthetic result entries are exercised; no research data or model operations.
 import {chromium} from 'playwright';
 import {execFileSync} from 'node:child_process';
 import {randomBytes, randomUUID} from 'node:crypto';
@@ -36,7 +36,7 @@ assert.equal(client.UserPoolClient.ClientName,'cellinguist-dev-web');
 const table='cellinguist-dev-history';
 const users=[], contexts=[], probes=[];
 const cleanupPath=`${root}/.tools/live-smoke-cleanup.json`;
-function saveCleanup(){writeFileSync(cleanupPath,JSON.stringify({pool,table,users:users.map(u=>u.username),probes},null,2),{mode:0o600});}
+function saveCleanup(){writeFileSync(cleanupPath,JSON.stringify({pool,table,users:users.map(u=>({username:u.username,sub:u.sub})),probes},null,2),{mode:0o600});}
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 const browserErrors=[];
 async function account(label){
@@ -61,7 +61,7 @@ async function signIn(user){
   await page.locator('[name="signInSubmitButton"]:visible').click();
   await page.waitForURL(`${url}/`);
   await page.waitForFunction(()=>document.querySelector('#auth-button').textContent==='Sign out'&&!document.querySelector('#workspace').hasAttribute('aria-busy'),{},{timeout:45000});
-  assert.equal(await page.locator('#catalog-count').textContent(),'0');
+  assert.ok(Number.isFinite(Number(await page.locator('#catalog-count').textContent())));
   assert.equal(await page.locator('#view-button').isDisabled(),true);
   assert.equal(await page.locator('#error').isVisible(),false);
   return page;
@@ -85,14 +85,37 @@ try{
   console.log('PASS: public health, protected-route rejection, CloudFront security headers.');
   const alice=await account('alice'),bob=await account('bob');
   const pageA=await signIn(alice),pageB=await signIn(bob);
-  console.log('PASS: two isolated real Cognito PKCE logins and authenticated empty catalog.');
+  console.log('PASS: two isolated real Cognito PKCE logins and authenticated catalog.');
   const rejected=await call(pageA,'/history',{cellType:'not-in-catalog',conditionId:'not-in-catalog'});
   assert.equal(rejected.status,400);
-  const probe={PK:{S:`USER#${alice.sub}`},SK:{S:`QUERY#${new Date().toISOString()}#integration-check`}};
-  probes.push(probe);saveCleanup();
-  aws('dynamodb','put-item',{TableName:table,Item:{...probe,cellType:{S:'integration-check-only'},conditionId:{S:'no-research-result'},createdAt:{S:new Date().toISOString()},resultVersion:{S:'v1'}}});
+  const catalog=await call(pageA,'/catalog');
+  assert.equal(catalog.status,200);
+  const demo=catalog.body.entries.find(entry=>entry.synthetic===true);
+  if(demo){
+    assert.ok(demo.cellType.startsWith('demo-')&&demo.conditionId.startsWith('demo-'));
+    assert.equal(await pageA.locator('#synthetic-notice').isVisible(),true);
+    await pageA.selectOption('#cell-type',demo.cellType);
+    await pageA.selectOption('#condition',demo.conditionId);
+    await pageA.click('#view-button');
+    await pageA.locator('#result-content').waitFor({state:'visible'});
+    await pageA.waitForFunction(()=>document.querySelector('#result-plot').naturalWidth>0);
+    assert.equal(await pageA.locator('#result-badge').textContent(),'SYNTHETIC DEMO');
+    assert.match(await pageA.locator('#result-summary').textContent(),/SYNTHETIC CLASS DEMO/);
+    const plot=new URL(await pageA.locator('#result-plot').getAttribute('src'));
+    plot.search='';
+    const unsigned=await fetch(plot,{signal:AbortSignal.timeout(20000)});
+    assert.equal(unsigned.status,403,'Plot object must remain private without its signature');
+    await pageA.click('#save-button');
+    await pageA.waitForFunction(()=>document.querySelector('#history-count').textContent==='1');
+    console.log('PASS: synthetic labels, real signed plot, private unsigned plot, and UI Save query.');
+  }else{
+    assert.equal(catalog.body.entries.length,0,'Only empty or explicitly synthetic catalogs are supported by this check');
+    const probe={PK:{S:`USER#${alice.sub}`},SK:{S:`QUERY#${new Date().toISOString()}#integration-check`}};
+    probes.push(probe);saveCleanup();
+    aws('dynamodb','put-item',{TableName:table,Item:{...probe,cellType:{S:'integration-check-only'},conditionId:{S:'no-research-result'},createdAt:{S:new Date().toISOString()},resultVersion:{S:'v1'}}});
+  }
   const own=await call(pageA,'/history'),other=await call(pageB,'/history');
-  assert.equal(own.status,200);assert.equal(own.body.items.length,1);assert.equal(own.body.items[0].cellType,'integration-check-only');
+  assert.equal(own.status,200);assert.equal(own.body.items.length,1);assert.equal(own.body.items[0].cellType,demo?demo.cellType:'integration-check-only');
   assert.equal(other.status,200);assert.equal(other.body.items.length,0);
   await pageA.reload({waitUntil:'networkidle'});
   await pageA.waitForFunction(()=>document.querySelector('#history-count').textContent==='1');
@@ -103,9 +126,19 @@ try{
   await pageA.waitForFunction(()=>document.querySelector('#session-label').textContent==='Signed out');
   assert.equal(await pageA.evaluate(()=>sessionStorage.getItem('cellinguist.session.v1')),null);
   console.log('PASS: hosted logout and local session removal.');
+  const pageAgain=await signIn(alice);
+  await pageAgain.waitForFunction(()=>document.querySelector('#history-count').textContent==='1');
+  await pageAgain.click('#history-tab');
+  assert.equal(await pageAgain.locator('#history-list li').count(),1);
+  if(demo){
+    await pageAgain.locator('#history-list button').click();
+    await pageAgain.locator('#result-content').waitFor({state:'visible'});
+    await pageAgain.waitForFunction(()=>document.querySelector('#result-plot').naturalWidth>0);
+  }
+  console.log('PASS: saved history survives logout and a completely new sign-in session.');
   assert.deepEqual(browserErrors,[]);
   mkdirSync(`${root}/docs/previews`,{recursive:true});
-  await pageB.screenshot({path:`${root}/docs/previews/aws-connected-empty-catalog.png`,fullPage:true});
+  await pageAgain.screenshot({path:`${root}/docs/previews/aws-synthetic-demo.png`,fullPage:true});
 }catch(err){
   failure=err;
   // Avoid printing input objects, passwords, token-bearing URLs, or subprocess command diagnostics.
@@ -115,7 +148,20 @@ try{
   await browser.close();
   let clean=true;
   for(const key of probes){try{aws('dynamodb','delete-item',{TableName:table,Key:key});}catch{clean=false;console.error('History probe cleanup failed; inspect .tools/live-smoke-cleanup.json');}}
-  for(const user of users){try{aws('cognito-idp','admin-delete-user',{UserPoolId:pool,Username:user.username});}catch{clean=false;console.error('Temporary user cleanup failed; inspect .tools/live-smoke-cleanup.json');}}
+  // Clean every record in these newly-created users' partitions, including UI
+  // writes if a failure happened before their response could be recorded.
+  for(const user of users){
+    try{
+      let cursor;
+      do{
+        const response=aws('dynamodb','query',{TableName:table,KeyConditionExpression:'#pk = :pk',ExpressionAttributeNames:{'#pk':'PK'},ExpressionAttributeValues:{':pk':{S:`USER#${user.sub}`}},ProjectionExpression:'PK, SK',ConsistentRead:true,...(cursor?{ExclusiveStartKey:cursor}:{})});
+        for(const item of response.Items||[])aws('dynamodb','delete-item',{TableName:table,Key:{PK:item.PK,SK:item.SK}});
+        cursor=response.LastEvaluatedKey;
+      }while(cursor);
+    }catch{clean=false;console.error('Temporary history cleanup failed; inspect .tools/live-smoke-cleanup.json');}
+    try{aws('cognito-idp','admin-delete-user',{UserPoolId:pool,Username:user.username});}
+    catch{clean=false;console.error('Temporary user cleanup failed; inspect .tools/live-smoke-cleanup.json');}
+  }
   if(clean){try{unlinkSync(cleanupPath);}catch{}console.log('Temporary test users and history probe removed.');}
   if(!clean)process.exitCode=1;
 }

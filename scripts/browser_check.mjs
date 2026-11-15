@@ -8,6 +8,9 @@ const login='https://login.example.test';
 const api='https://api.example.test';
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 const errors=[];
+const fixtures=`${root}/demo/synthetic-v1`;
+const catalog=JSON.parse(readFileSync(`${fixtures}/catalog.json`,'utf8'));
+const first=catalog.entries[0];
 async function scenario({empty=false,connected=true}={}) {
   const context=await browser.newContext({viewport:{width:1440,height:1000}});
   let rows=[], tokenCalls=0;
@@ -33,8 +36,12 @@ async function scenario({empty=false,connected=true}={}) {
     if(url.origin===api){
       if(url.pathname!=='/health')assert.equal(request.headers().authorization,'Bearer test-access-token');
       if(url.pathname==='/health')return route.fulfill({json:{status:'ok'}});
-      if(url.pathname==='/catalog')return route.fulfill({json:{version:'v1',entries:empty?[]:[{cellType:'test-cell',conditionId:'test-treatment'}]}});
-      if(url.pathname==='/results')return route.fulfill({json:{precomputed:true,resultVersion:'v1',summary:{note:'UI contract test object only; no research result'},plotUrl:'https://plots.example.test/test.png'}});
+      if(url.pathname==='/catalog')return route.fulfill({json:{...catalog,entries:empty?[]:catalog.entries}});
+      if(url.pathname==='/results'){
+        const cell=url.searchParams.get('cell_type'),condition=url.searchParams.get('condition');
+        assert.ok(catalog.entries.some(e=>e.cellType===cell&&e.conditionId===condition));
+        return route.fulfill({json:{precomputed:true,resultVersion:'v1',summary:JSON.parse(readFileSync(`${fixtures}/${cell}/${condition}/summary.json`,'utf8')),plotUrl:`https://plots.example.test/${cell}/${condition}/plot.png`}});
+      }
       if(url.pathname==='/history'){
         if(request.method()==='POST'){
           const item={...request.postDataJSON(),createdAt:'2026-11-10T12:00:00Z',resultVersion:'v1'};
@@ -44,7 +51,7 @@ async function scenario({empty=false,connected=true}={}) {
         return route.fulfill({json:{items:rows,limit:50}});
       }
     }
-    if(url.origin==='https://plots.example.test')return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64')});
+    if(url.origin==='https://plots.example.test')return route.fulfill({contentType:'image/png',body:readFileSync(`${fixtures}${url.pathname}`)});
     throw new Error(`Unexpected request: ${url.origin}${url.pathname}`);
   });
   await page.goto(origin);
@@ -71,23 +78,37 @@ try{
   const live=await scenario();
   await signIn(live.page);
   assert.equal(new URL(live.page.url()).search,'');
-  await live.page.selectOption('#cell-type','test-cell');
-  await live.page.selectOption('#condition','test-treatment');
+  assert.equal(await live.page.locator('#synthetic-notice').isVisible(),true);
+  await live.page.selectOption('#cell-type',first.cellType);
+  await live.page.selectOption('#condition',first.conditionId);
   await live.page.click('#view-button');
   await live.page.locator('#result-content').waitFor({state:'visible'});
-  assert.match(await live.page.locator('#result-summary').textContent(),/UI contract test/);
+  assert.match(await live.page.locator('#result-summary').textContent(),/SYNTHETIC CLASS DEMO/);
+  assert.equal(await live.page.locator('#result-badge').textContent(),'SYNTHETIC DEMO');
+  await live.page.waitForFunction(()=>document.querySelector('#result-plot').naturalWidth>0);
+  await live.page.screenshot({path:`${root}/docs/previews/synthetic-demo-desktop.png`,fullPage:true});
+  await live.page.setViewportSize({width:390,height:844});
+  assert.equal(await live.page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+  await live.page.screenshot({path:`${root}/docs/previews/synthetic-demo-mobile.png`,fullPage:true});
+  await live.page.setViewportSize({width:1440,height:1000});
   await live.page.click('#save-button');
   await live.page.waitForFunction(()=>document.querySelector('#history-count').textContent==='1');
   await live.page.click('#history-tab');
   assert.equal(await live.page.locator('#history-list li').count(),1);
   await live.page.click('#history-list button');
   await live.page.locator('#result-content').waitFor({state:'visible'});
+  await live.page.selectOption('#cell-type','demo-cell-beta');
+  assert.equal(await live.page.locator('#condition').inputValue(),'');
+  assert.equal(await live.page.locator('#view-button').isDisabled(),true);
+  assert.equal(await live.page.locator('#result-content').isVisible(),false);
   await live.page.reload();
   await live.page.waitForFunction(()=>document.querySelector('#history-count').textContent==='1');
   await live.page.click('#auth-button');
   await live.page.waitForURL(`${login}/logout?**`);
   await live.page.goto(origin);
   assert.equal(await live.page.locator('#session-label').textContent(),'Signed out');
+  await signIn(live.page);
+  await live.page.waitForFunction(()=>document.querySelector('#history-count').textContent==='1');
   await live.context.close();
   const empty=await scenario({empty:true});
   await signIn(empty.page);
@@ -102,5 +123,5 @@ try{
   assert.equal(new URL(invalid.page.url()).search,'');
   await invalid.context.close();
   assert.deepEqual(errors,[]);
-  console.log('PASS: desktop/mobile empty preview, PKCE callback, query/result/save/history/revisit, session reload/logout, empty catalog, callback rejection. All AWS/identity requests intercepted; no data or AWS access.');
+  console.log('PASS: desktop/mobile labeled synthetic fixtures, real PNG rendering, PKCE callback, query/save/history/revisit, selection reset, logout/relogin persistence, empty catalog, callback rejection. All AWS/identity requests intercepted; no data or AWS access.');
 }finally{await browser.close();}
