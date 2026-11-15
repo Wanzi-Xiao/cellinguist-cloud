@@ -4,7 +4,7 @@ A cloud computing final project for exploring **approved, precomputed** cytokine
 
 ## Implementation status
 
-The platform is deployed on AWS as of 2026-11-10. The default catalog starts empty. Three explicitly synthetic, user-approved teaching examples are available for optional deployment with `enable_synthetic_demo = true`; they are not scientific predictions. Real research artifacts remain excluded.
+The platform is deployed on AWS as of 2026-11-10. As of 2026-11-15, this deployment serves three explicitly synthetic, user-approved teaching examples. They are not scientific predictions, and real research artifacts remain excluded. Fresh deployments still default to an empty catalog unless `enable_synthetic_demo = true`.
 
 - Dashboard: https://d3t5bcsvv8n26w.cloudfront.net
 - Public API health: https://eg3kg9bak8.execute-api.us-east-1.amazonaws.com/health
@@ -66,7 +66,7 @@ Use SSH port forwarding if viewing a remote server. This serves only the fronten
 
 ## Synthetic class demo
 
-The user approved adding synthetic examples on 2026-11-15. `demo/synthetic-v1/` contains three tiny, hand-authored JSON/PNG pairs for two fictional cell types and three fictional treatments (including a combination). Scores are arbitrary illustrative values. The catalog, summary JSON, PNG metadata and image text all identify them as synthetic, and the dashboard shows a persistent warning plus a per-result badge. These assets are safe to publish as course fixtures and are unrelated to existing research directories.
+The user approved adding synthetic examples on 2026-11-15, and the three examples are deployed at the dashboard URL above. `demo/synthetic-v1/` contains three tiny, hand-authored JSON/PNG pairs for two fictional cell types and three fictional treatments (including a combination). Scores are arbitrary illustrative values. The catalog, summary JSON, PNG metadata and image text all identify them as synthetic, and the dashboard shows a persistent warning plus a per-result badge. These assets are safe to publish as course fixtures and are unrelated to existing research directories.
 
 Reproduce the PNG/JSON fixtures with `python3 scripts/build_synthetic_demo.py` (development-only Matplotlib dependency; never installed in Lambda). Check their deployable contract with `python3 -m unittest discover -s scripts/tests -v`. Browser regression tests use these same files with intercepted requests, so screenshots do not pretend to be evidence of AWS deployment.
 
@@ -86,6 +86,8 @@ CELLINGUIST_LIVE_CHECK=1 npm run test:aws
 ```
 
 This live check creates two temporary Cognito users and one temporary DynamoDB history probe. It never adds result artifacts or runs a model. Passwords stay in anonymous memory, never CLI arguments or disk; `.tools/live-smoke-cleanup.json` records only resource IDs for recovery if interrupted. Logs/screenshots remain under ignored `docs/` when redirected there.
+
+On 2026-11-15, real AWS checks passed for synthetic labels, signed PNG delivery, unsigned PNG rejection (403), UI saving, two-user isolation, history after reload, and reopening a saved query after logout and a completely new login. All temporary users and their saved records were removed. The final Terraform plan reports no changes.
 
 With the optional synthetic catalog enabled, the live check exercises the real private plot link, unsigned-plot rejection, UI Save query, cross-user isolation, reopening a saved query, and persistence after logout followed by a new Cognito login. With an empty catalog it instead uses a temporary direct-table history probe. Every saved test record in these freshly created test users' partitions is deleted before the users are removed. It never reads unrelated user partitions.
 
@@ -153,7 +155,7 @@ Completed: real Terraform bootstrap/application apply, GitHub OIDC ECR push, dig
 
 Still needed:
 
-- Complete the optional synthetic-demo deployment and record its live verification after AWS login; real research artifacts are not needed for this teaching demo.
+- Record the now-deployed synthetic demonstration for the course video; real research artifacts are not needed.
 - Confirm the SNS email subscription, verify delivery, and record the digest/alarm/dashboard demonstration. The weekly schedule intentionally remains disabled.
 - Recorded demo, exact deployed URLs, and cleanup evidence.
 
