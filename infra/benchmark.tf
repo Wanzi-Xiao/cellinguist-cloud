@@ -36,3 +36,37 @@ resource "aws_lambda_function" "benchmark" {
   environment { variables = { RESULTS_BUCKET = aws_s3_bucket.results.id } }
   depends_on = [aws_iam_role_policy.benchmark, aws_ecr_repository_policy.lambda]
 }
+
+# Optional one-off integration check, not a recurring job. Disable after evidence.
+variable "digest_check_at" {
+  type        = string
+  default     = ""
+  description = "UTC timestamp YYYY-MM-DDTHH:MM:SS for an explicitly run one-time digest integration check; empty disables it."
+  validation {
+    condition     = var.digest_check_at == "" || can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$", var.digest_check_at))
+    error_message = "Use an empty string or a UTC schedule timestamp without a timezone suffix."
+  }
+}
+resource "aws_scheduler_schedule_group" "digest_check" {
+  count = var.digest_check_at == "" ? 0 : 1
+  name  = "${local.name}-course-check"
+}
+resource "aws_scheduler_schedule" "digest_check" {
+  count                        = var.digest_check_at == "" ? 0 : 1
+  name                         = "${local.name}-one-time-digest-check"
+  group_name                   = aws_scheduler_schedule_group.digest_check[0].name
+  state                        = "ENABLED"
+  schedule_expression          = "at(${var.digest_check_at})"
+  schedule_expression_timezone = "UTC"
+  flexible_time_window { mode = "OFF" }
+  target {
+    arn      = aws_lambda_function.digest[0].arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ source = "cellinguist-course-scheduler-check" })
+    retry_policy {
+      maximum_event_age_in_seconds = 300
+      maximum_retry_attempts       = 0
+    }
+  }
+  depends_on = [aws_iam_role_policy.scheduler]
+}
