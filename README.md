@@ -8,12 +8,12 @@ The platform is deployed on AWS as of 2026-11-10. As of 2026-11-15, this deploym
 
 - Dashboard: https://d3t5bcsvv8n26w.cloudfront.net
 - Public API health: https://eg3kg9bak8.execute-api.us-east-1.amazonaws.com/health
-- Successful OIDC image build: https://github.com/Wanzi-Xiao/cellinguist-cloud/actions/runs/42868636908 (attempt 2)
-- Successful platform checks: https://github.com/Wanzi-Xiao/cellinguist-cloud/actions/runs/42868636860
-- Deployed image source commit: `8f77b8939bbc1adc630753eccd8b7c391dd272e7`
-- Deployed ECR image digest: `sha256:c5ecb0ec81bb3e7816e847865cf51c0e530d632b1a12ebef3c828c110c598614`
+- Successful OIDC image build: https://github.com/Wanzi-Xiao/cellinguist-cloud/actions/runs/43752034093
+- Successful platform checks: https://github.com/Wanzi-Xiao/cellinguist-cloud/actions/runs/43752034092
+- Deployed image source commit: `f62835b1c31fa99d86864bd38adc55e490752506`
+- Deployed ECR image digest: `sha256:7c1a85020a48af7cd50e9fd05c15942006808477318dad7cdec0ecde0409a929`
 
-SNS email subscription confirmation and the final course demo remain user actions. The weekly digest schedule stays disabled until deliberately enabled.
+The SNS email subscription is confirmed in AWS as of 2026-11-15. A Terraform-created one-time EventBridge schedule invoked the digest Lambda at 19:30 UTC that day; CloudWatch recorded successful SNS publication of the explicitly labeled course test. The student confirmed receipt of the labeled integration test email. The final course demo remains to be recorded. The weekly digest schedule stays disabled until deliberately enabled.
 
 - Responsive response explorer: sign-in/signup, cell/treatment selection, precomputed plot and JSON summary, saved queries, and reopening historical selections.
 - Cognito authorization-code flow with S256 PKCE, random single-use state, a ten-minute callback lifetime, and tab-scoped access tokens. ID/refresh tokens are discarded. Expired sessions require sign-in again; a new sign-in retrieves the same DynamoDB history.
@@ -23,7 +23,79 @@ SNS email subscription confirmation and the final course demo remain user action
 - Container-based Python Lambda API and separate operational digest handler. No inference dependencies.
 - Terraform defines S3, CloudFront, API Gateway HTTP API, Lambda, ECR, DynamoDB, Cognito, EventBridge Scheduler, SNS, and a CloudWatch dashboard/alarm. IAM is additional to these ten services.
 - Terraform uploads all browser assets and generates public `config.js` from resource outputs. Private S3 origins, browser security headers, and disabled CloudFront caching support OAuth callbacks and configuration updates.
-- GitHub Actions runs API/frontend/browser checks and Terraform validation. Browser CI is pinned to Ubuntu 22.04 to match the locked Playwright version. A separate workflow builds commit-tagged ECR images with GitHub OIDC using public deployment identifiers in the workflow, with optional repository-variable overrides. Deployment is a manual reviewed Terraform update.
+- GitHub Actions runs API/frontend/browser checks and Terraform validation. Browser CI is pinned to Ubuntu 22.04 to match the locked Playwright version. A separate workflow builds commit-tagged ECR images with GitHub OIDC using repository variables populated from Terraform outputs (no account-specific fallback values in the workflow). Deployment is a manual reviewed Terraform update.
+
+## Architecture and service justification
+
+```mermaid
+flowchart LR
+  Browser --> CloudFront
+  CloudFront --> Frontend[Private S3 frontend]
+  Browser --> Cognito[Amazon Cognito: code + PKCE]
+  Browser -->|Access JWT| Gateway[API Gateway HTTP API]
+  Gateway --> API[Container Lambda API]
+  API --> Results[Private S3 JSON + PNG]
+  API --> History[DynamoDB user history]
+  Results -->|Short-lived signed plot URL| Browser
+  Actions[GitHub Actions + OIDC] --> ECR[Amazon ECR: commit-SHA image]
+  ECR --> API
+  ECR --> Digest[Digest Lambda]
+  Scheduler[EventBridge Scheduler] --> Digest
+  Digest --> SNS[Amazon SNS email topic]
+  Monitoring[CloudWatch dashboard + error alarm] --> SNS
+  IAM[IAM scoped roles + trust policies] -.-> Actions
+  IAM -.-> API
+  IAM -.-> Digest
+  IAM -.-> Scheduler
+```
+
+| AWS service | Actual role and reason for selection |
+|---|---|
+| S3 | Stores immutable summaries, PNGs and static assets; simpler than placing blobs in a relational database. The result bucket and frontend origin are private. |
+| CloudFront | Provides HTTPS for a restricted S3 origin without operating a permanent web server. |
+| API Gateway | Provides HTTP routes, Cognito JWT validation and request throttling instead of a self-managed reverse proxy/auth layer. |
+| Lambda | Runs the API and digest from the ECR container on demand; fits this small, irregular request workload without an always-running EC2/ECS service. |
+| ECR | Stores commit-tagged application images consumed by Lambda; integrates with IAM/OIDC without external-registry credentials. |
+| DynamoDB | Persists user-owned saved queries with partition-key access and no join requirements; simpler than operating a relational database for this access pattern. |
+| Cognito | Provides signup, password handling and browser login/logout instead of implementing a password database. |
+| EventBridge Scheduler | Stores the weekly cadence and supports an explicit one-time integration check; replaces a permanent cron host. Weekly execution remains disabled by default. A Terraform-created one-time schedule successfully invoked the digest and published a labeled SNS test on 2026-11-15; the temporary schedule is removed after verification. |
+| SNS | Delivers operational messages and alarm notifications to the confirmed administrator subscription without custom email delivery code. |
+| CloudWatch | Intentionally configured dashboard and error-count alarm provide monitoring beyond default Lambda logs. |
+| IAM | Scoped Lambda execution policies and a main-branch-only GitHub OIDC trust policy avoid static AWS keys. IAM is an additional real enabling service; the proposal's ten primary services do not depend on counting it. |
+
+This serverless stack uses public managed HTTPS endpoints with IAM/JWT authorization and private object origins. It does not deploy a custom VPC, NAT gateway, subnet, load balancer or continuously running host. Networking primitives are not included in the service count. The temporary benchmark Lambda has no public route and can read only its dedicated synthetic benchmark prefix; it is removed after measurement and is not a separate counted AWS service.
+
+IAM wildcard rationale: `ecr:GetAuthorizationToken` and `cloudwatch:GetMetricStatistics` require `Resource = "*"` because these actions do not expose resource-level scoping. All ECR upload actions are limited to the named repository, DynamoDB actions to the history table, S3 object reads to the relevant prefix, and SNS publication to the one operations topic. API `s3:ListBucket` is limited to the result bucket so missing objects can return 404. Log writes are limited to the corresponding group streams. These choices are visible in `infra/`; see the [CloudWatch](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazoncloudwatch.html) and [ECR](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonelasticcontainerregistry.html) authorization references.
+
+## Measured gzip evaluation
+
+The API accepts plain JSON or gzip bytes at the same S3 key using `Content-Encoding: gzip`, inflating before returning ordinary API JSON. Wire and inflated JSON are independently capped at 256 KiB; malformed/truncated input is rejected and response bodies are closed. PNG handling is unchanged.
+
+Measurements on 2026-11-15 used deterministic synthetic inputs, gzip level 6, us-east-1 Lambda at 256 MiB, and twelve randomized paired warm trials per fixture (168 measured calls plus fourteen excluded warmups). No model or research dataset was used.
+
+| Synthetic fixture | Plain / gzip bytes | Reduction | Median S3 read+decode ms, plain / gzip |
+|---|---:|---:|---:|
+| demo_summary | 617 / 333 | 46.0% | 23.703 / 26.771 |
+| repetitive_32k | 32768 / 184 | 99.4% | 25.704 / 26.622 |
+| mixed_32k | 32768 / 24669 | 24.7% | 25.716 / 25.579 |
+| repetitive_128k | 131072 / 424 | 99.7% | 30.252 / 28.618 |
+| mixed_128k | 131072 / 98607 | 24.8% | 26.936 / 24.580 |
+| repetitive_240k | 245760 / 702 | 99.7% | 26.816 / 27.019 |
+| mixed_240k | 245760 / 184869 | 24.8% | 26.066 / 31.190 |
+
+**Decision:** fewer bytes did not yield a consistent latency improvement in this small run. Keep the current sub-KiB summaries plain; retain gzip compatibility for larger inputs that are measured separately. Local inflate medians ranged from about 0.018 to 0.95 ms. The live application passed a mixed gzip/plain test, including signed PNG access and logout/new-login persistence, and the original plain S3 version was restored.
+
+These are warm S3-to-Lambda read+decode measurements, not complete API Gateway/Cognito response latency. Client Lambda Invoke roundtrips were about 0.8 seconds and include SDK/network overhead, but do not return a full summary or include catalog lookup/presigning. Twelve samples are insufficient for dependable p95 or general speed/cost claims. Repetitive/mixed strings are not representative scientific workloads.
+
+Reproduce local timings with `python3 scripts/run_gzip_benchmark.py --output docs/gzip-local.json`. Live measurement requires the optional `enable_gzip_benchmark = true` Terraform resources and an isolated development environment with boto3. The handler has no public API route and reads only `benchmarks/gzip/*`. Run `scripts/run_gzip_benchmark.py --aws --bucket <results_bucket_output>`, then set the flag false and apply to remove temporary compute/IAM/logs. The harness deletes all temporary S3 versions. Keep raw timings and private reports under ignored `docs/`. Production never exposes a benchmark route.
+
+The optional `digest_check_at` UTC variable creates a single operational test schedule in an isolated group. The completed check produced a structured `digest_published` log and SNS message ID; remove the schedule/group with `digest_check_at = ""`. This does not enable the weekly job.
+
+## Presentation and submission
+
+Planned format: recorded video, at most ten minutes, due **December 2, 2026**. The recording/link is pending student work; it has not been submitted. Add the final recording link here or submit the file on Canvas. The official rubric requires a repository, architecture diagram/service justifications, authentication/persistence demonstration, Terraform and an OIDC image-build run, plus challenges/learnings. A three-page optional report draft, five-minute narration plan, teacher-reply draft and rubric checklist are kept locally in `docs/` for student review.
+
+The official group rule is 2–4 students; the original proposal records verbal approval for this individual project. The student must verify that exception and the November 4 signup/roster records. A working deployment does not establish that the registration or Canvas submission was completed.
 
 ## Layout
 
@@ -128,7 +200,7 @@ No step below runs automatically. AWS resources incur charges while deployed. St
    ```
 
    Bootstrap creates the dashboard, Cognito, ECR, storage, monitoring, and supporting services. The private catalog is initialized as `{"version":"v1","entries":[]}`. Both image-based Lambdas, their API routes, and the schedule are omitted until an image exists, so the dashboard cannot reach working API routes yet.
-3. The workflow includes the current deployment's public region, scoped role ARN, and ECR repository URI; these are identifiers, not credentials. Optional GitHub Actions variables `AWS_REGION`, `AWS_ROLE_ARN`, and `ECR_REPOSITORY` override them for another deployment. Dispatch **Build API image** from `main`, or push a new commit to `main`. Forks do not use this deployment job. ECR tags are immutable: rebuild with a new commit SHA when needed. The OIDC trust policy must exactly match the main-branch subject; it grants image delivery only, not infrastructure administration.
+3. Configure GitHub repository Actions **Variables** (not access-key secrets): `AWS_REGION` from your selected region, `AWS_ROLE_ARN` from Terraform `github_role_arn`, and `ECR_REPOSITORY` from Terraform `ecr_repository_url`. The workflow has no account-specific fallbacks and skips image delivery until all three variables exist. Dispatch **Build API image** from `main`, or push a new commit to `main`. Forks need their own variables and matching OIDC trust before image delivery is enabled. ECR tags are immutable: rebuild with a new commit SHA when needed. The OIDC trust policy must exactly match the main-branch subject; it grants image delivery only, not infrastructure administration.
 4. Record the successful Actions run URL and exact ECR image digest. Set `api_image_uri` in private tfvars to `repository@sha256:...`, then review a new plan and apply it. Both Lambdas use that image with different handler commands. Terraform generates `config.js` and uploads all browser assets; no manual copying of API URLs is needed. The public frontend bucket remains private behind CloudFront origin access control.
 5. Verify `/health`, unauthenticated rejection, Cognito signup/sign-in/logout, access-token authorization, empty catalog behavior, and history isolation with two real accounts. The local tests and mocked browser checks do not replace AWS integration testing.
 6. Confirm the SNS email subscription. Test the digest and alarm, inspect the CloudWatch dashboard, and only enable the weekly schedule when desired. The digest reads aggregate metrics, never personal query histories. It defaults to disabled.
@@ -145,7 +217,7 @@ results/v1/{cell_type}/{condition}/summary.json
 results/v1/{cell_type}/{condition}/plot.png
 ```
 
-Catalog: `{"version":"v1","entries":[{"cellType":"approved-slug","conditionId":"approved-slug"}]}`. Identifiers must match `[a-z0-9][a-z0-9_-]{0,63}`. Summary objects are JSON, bounded to 256 KiB, and displayed as formatted JSON without interpreting HTML. Plots are PNG images accessed through short-lived signed URLs. Missing summary returns 404. No scientific fixtures, seed artifacts, model weights, or result uploads are included.
+Catalog: `{"version":"v1","entries":[{"cellType":"approved-slug","conditionId":"approved-slug"}]}`. Identifiers must match `[a-z0-9][a-z0-9_-]{0,63}`. Summary objects are plain or gzip-encoded JSON, bounded to 256 KiB on the wire and after decompression, and displayed as formatted JSON without interpreting HTML. Plots are PNG images accessed through short-lived signed URLs. Missing summary returns 404. No scientific fixtures, seed artifacts, model weights, or result uploads are included.
 
 The gateway uses HTTP API payload format 2.0, rather than the separate API Gateway REST API product. API Gateway validates token signature, issuer, audience and scope; Lambda reads its verified `sub`. Do not expose a public Lambda Function URL. See [AWS JWT-authorizer guidance](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html). CloudFront uses the documented [CachingDisabled policy](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html#managed-cache-policy-caching-disabled); CSP restricts connections to the configured Cognito origin and regional API Gateway endpoints (the regional pattern avoids a Terraform dependency cycle).
 
@@ -156,8 +228,14 @@ Completed: real Terraform bootstrap/application apply, GitHub OIDC ECR push, dig
 Still needed:
 
 - Record the now-deployed synthetic demonstration for the course video; real research artifacts are not needed.
-- Confirm the SNS email subscription, verify delivery, and record the digest/alarm/dashboard demonstration. The weekly schedule intentionally remains disabled.
+- Record the digest/alarm/dashboard demonstration. AWS confirms the email subscription and the student confirmed test delivery; the weekly schedule intentionally remains disabled.
 - Recorded demo, exact deployed URLs, and cleanup evidence.
+
+## Submission requirements
+
+Final submission and demo day: **December 2, 2026**. Submit the repository URL and either a recorded demo of at most ten minutes or an in-person presentation. The recording link or presentation choice still needs to be added here. For a private repository, grant instructor `dansc0de` access.
+
+The supplied rubric requires at least nine actively used AWS services, Terraform for every counted service, a successful main-branch OIDC image build and SHA-tagged ECR push, signup/login, persistent user changes across logout/login, an architecture diagram with service justification, and an AI-use disclosure. The sections above describe these components; final portal submission and roster/signup records must be checked by the student. A two-to-three-page written report is optional.
 
 ## Validation and AI assistance
 

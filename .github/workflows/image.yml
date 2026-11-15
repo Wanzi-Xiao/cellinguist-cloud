@@ -8,11 +8,11 @@ permissions:
   id-token: write
 jobs:
   image:
-    if: github.repository == 'Wanzi-Xiao/cellinguist-cloud'
+    if: ${{ vars.AWS_ROLE_ARN != '' && vars.ECR_REPOSITORY != '' && vars.AWS_REGION != '' }}
     env:
-      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN || 'arn:aws:iam::056520430837:role/cellinguist-dev-github-ecr' }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || '056520430837.dkr.ecr.us-east-1.amazonaws.com/cellinguist-dev-api' }}
+      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
